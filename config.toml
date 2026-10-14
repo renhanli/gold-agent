@@ -1,0 +1,103 @@
+# 黄金短线交易助手 - 配置
+# 价格单位统一为 人民币/克（中间价），点差在买卖时分别加减一半。
+
+[account]
+capital = 100000            # 初始本金（元）
+risk_per_trade = 0.01       # 每笔最多亏总资金的比例（含点差）
+max_position_ratio = 1.0    # 单笔持仓市值上限 / 当前权益
+min_unit_grams = 1          # 最小交易单位（克）
+
+[drawdown]
+reduce_at = 0.03            # 回撤达到 3%：每笔风险减半
+halt_at = 0.05              # 回撤达到 5%：暂停开新仓
+halt_days = 20              # 暂停多少个交易日后恢复（恢复后仍按减半风险，直到创新高）
+
+[broker]
+name = "招商银行纸黄金"
+spread = 5.0                # 买入价 - 卖出价（元/克），固定
+premium = 2.2               # 招行中间价 - 国际金价换算价（元/克），2026-10-14 实测 893.87 vs 891.7
+session = "09:30-24:00"     # 交易时间（北京时间）
+long_only = true
+# 回测多年数据时，金价从 300 涨到 1200 元/克，固定 5 元点差在早年占比过高。
+# 打开后，点差、最小止损、溢价都按 当时价格 / ref_price 等比例缩放（即保持今天的百分比）。
+scale_with_price = true
+ref_price = 894.0
+
+[data]
+source = "daily"                       # daily = 全天日线；session = 由小时线合成的招行时段日线
+gold_csv = "data/xauusd_daily.csv"
+session_csv = "data/xauusd_session.csv"
+fx_csv = "data/usdcny.csv"
+session = "09:30-24:00"
+
+# 报告里按市场阶段拆分收益（没有数据覆盖的阶段会显示为 —）
+[[report.periods]]
+name = "2010-2012 牛市尾声"
+start = "2010-01-01"
+end = "2012-12-31"
+
+[[report.periods]]
+name = "2013-2015 熊市"
+start = "2013-01-01"
+end = "2015-12-31"
+
+[[report.periods]]
+name = "2016-2019 震荡"
+start = "2016-01-01"
+end = "2019-12-31"
+
+[[report.periods]]
+name = "2020-2023 宽幅震荡"
+start = "2020-01-01"
+end = "2023-12-31"
+
+[[report.periods]]
+name = "2024-2025 大牛市"
+start = "2024-01-01"
+end = "2025-12-31"
+
+[[report.periods]]
+name = "2026 至今 回调"
+start = "2026-01-01"
+end = "2099-12-31"
+
+# ---- 策略参数 ----
+# 止损 = 入场价 - stop_atr × ATR，且距离不小于 min_stop（元/克）
+# 止盈 = 入场价 + tp_r × 止损距离（tp_r = 0 表示不设固定止盈，只用移动止损）
+# 移动止损：价格从持仓最高点回落 trail_atr × ATR 时离场（0 = 不启用）
+
+[strategy.pullback]
+description = "上升趋势中回踩 20 日均线后转强买入"
+sma_fast = 20
+sma_slow = 50
+rsi_period = 14
+rsi_max = 55                # 回踩时 RSI 不能过热
+atr_period = 14
+stop_atr = 1.5
+min_stop = 20.0
+tp_r = 1.5
+trail_atr = 0.0
+max_hold_days = 15
+
+[strategy.breakout]
+description = "收盘突破 20 日最高价、且处于上升趋势时买入（趋势跟踪）"
+channel = 20
+sma_slow = 50
+atr_period = 14
+stop_atr = 2.0
+min_stop = 20.0
+tp_r = 0.0
+trail_atr = 3.0
+max_hold_days = 30
+
+[strategy.rsi_rebound]
+description = "长期趋势向上时，RSI 从 45 以下回升买入（回调反弹；牛市里 RSI 很少跌破 35）"
+sma_trend = 100
+rsi_period = 14
+rsi_low = 45
+atr_period = 14
+stop_atr = 1.5
+min_stop = 20.0
+tp_r = 1.5
+trail_atr = 0.0
+max_hold_days = 15
