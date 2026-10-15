@@ -8,6 +8,7 @@
 
 ```bash
 python -m gold_agent backtest      # 回测全部策略，生成 reports/backtest.html
+python -m gold_agent trend         # 方向 A：趋势择时持有（均线/交叉/通道/动量/波动率控仓），生成 reports/trend.html
 python -m gold_agent signal        # 用最新数据看今天各策略有没有买入信号
 python -m gold_agent update-data   # 下载 2010 年起日线 + 2020 年起小时线（需要 TWELVE_DATA_API_KEY，约 15 次请求）
 python -m gold_agent backtest --source session   # 用招行交易时段（9:30-24:00）合成的日线回测
@@ -27,7 +28,8 @@ python -m unittest discover -s tests
 | `gold_agent/strategy.py` | 买入规则：均线回踩、突破跟随、RSI 回调反弹，以及随机入场对照组 |
 | `gold_agent/backtest.py` | 回测引擎：点差、跳空止损、按风险计算克数、回撤后减仓和暂停 |
 | `gold_agent/research.py` | 多策略对比、随机入场对照、参数稳健性扫描 |
-| `gold_agent/report.py` | 生成 HTML 报告 |
+| `gold_agent/allocation.py` | 趋势择时持有：按目标仓位调仓、规则清单、前后半段稳定性、按回撤上限缩放仓位 |
+| `gold_agent/report.py` / `trend_report.py` | 生成 HTML 报告 |
 
 ## 回测假设
 

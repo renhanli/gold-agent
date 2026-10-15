@@ -110,6 +110,7 @@ def build(out: dict, cfg: dict, generated: dt.datetime) -> str:
     }
 
     return TEMPLATE.format(
+        css=CSS, js_helpers=JS_HELPERS, js_equity=JS_EQUITY,
         start=bars[0].date, end=bars[-1].date, n=len(bars),
         generated=generated.strftime("%Y-%m-%d %H:%M"),
         capital=f"{acct['capital']:,.0f}", risk=_pct(acct["risk_per_trade"], False),
@@ -127,46 +128,109 @@ def build(out: dict, cfg: dict, generated: dt.datetime) -> str:
         data=json.dumps(chart, ensure_ascii=False),
     )
 
+CSS = """:root { --surface:#fcfcfb; --raised:#f4f3f0; --t1:#0b0b0b; --t2:#52514e; --t3:#7a7974; --grid:#e8e7e3; --border:#e0dfda;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --pos:#006300; --neg:#b42318; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --surface:#1a1a19; --raised:#232322; --t1:#f0efec; --t2:#c3c2b7;
+  --t3:#8f8e86; --grid:#2c2c2a; --border:#383835; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --pos:#4cc06a; --neg:#ff7a6e; } }
+:root[data-theme="dark"] { --surface:#1a1a19; --raised:#232322; --t1:#f0efec; --t2:#c3c2b7; --t3:#8f8e86; --grid:#2c2c2a;
+  --border:#383835; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --pos:#4cc06a; --neg:#ff7a6e; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--surface); color:var(--t1); font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif; }
+main { max-width:1080px; margin:0 auto; padding:28px 16px 48px; }
+h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:17px; margin:32px 0 8px; } h3 { font-size:15px; margin:0 0 4px; }
+.muted { color:var(--t3); } code { font-size:12px; color:var(--t2); word-break:break-all; }
+.box { background:var(--raised); border-radius:10px; padding:12px 14px; color:var(--t2); }
+.box li { margin:2px 0; }
+.scroll { overflow-x:auto; }
+table.data { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; font-size:13px; }
+table.data th, table.data td { border-bottom:1px solid var(--border); padding:6px 8px; text-align:right; white-space:nowrap; }
+table.data th:first-child, table.data td:first-child { text-align:left; }
+table.data thead th { color:var(--t2); font-weight:600; }
+tr.ref { color:var(--t3); }
+.pos { color:var(--pos); } .neg { color:var(--neg); }
+.sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:baseline; }
+.s1 { background:var(--s1); } .s2 { background:var(--s2); } .s3 { background:var(--s3); } .s4 { background:var(--s4); }
+.chart { position:relative; } svg { display:block; width:100%; height:auto; overflow:visible; }
+svg text { font-size:11px; fill:var(--t3); }
+.legend { display:flex; flex-wrap:wrap; gap:16px; color:var(--t2); font-size:13px; margin:4px 0 6px; }
+.tip { position:absolute; pointer-events:none; background:var(--surface); border:1px solid var(--border); border-radius:8px;
+  padding:8px 10px; font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,.12); opacity:0; white-space:nowrap; z-index:2; }
+.tip td { padding:0 8px 0 0; } .tip td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+.tabs { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+.tabs button { border:1px solid var(--border); background:var(--surface); color:var(--t2); border-radius:999px; padding:4px 12px; font:inherit; cursor:pointer; }
+.tabs button[aria-pressed=true] { background:var(--t1); color:var(--surface); border-color:var(--t1); }
+section.strat { border-top:1px solid var(--border); padding-top:16px; margin-top:20px; }
+details { margin:8px 0; } summary { cursor:pointer; color:var(--t2); }
+"""
+
+JS_HELPERS = """const NS = "http://www.w3.org/2000/svg";
+const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); p && p.appendChild(e); return e; };
+const fmt = (v, d=0) => v.toLocaleString("zh-CN", {minimumFractionDigits:d, maximumFractionDigits:d});
+const W = 1040, H = 320, M = {t:12, r:16, b:28, l:64};
+const N = D.dates.length;
+const X = i => M.l + (W - M.l - M.r) * i / (N - 1);
+const idx = Object.fromEntries(D.dates.map((d, i) => [d, i]));
+
+function axes(svg, lo, hi, step, f) {
+  const Y = v => M.t + (hi - v) / (hi - lo) * (H - M.t - M.b);
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    el("line", {x1:M.l, x2:W-M.r, y1:Y(v), y2:Y(v), stroke:"var(--grid)"}, svg);
+    el("text", {x:M.l-8, y:Y(v)+4, "text-anchor":"end"}, svg).textContent = f(v);
+  }
+  let lastYear = "";
+  D.dates.forEach((d, i) => { const y = d.slice(0, 4);
+    if (y !== lastYear && i > 0) { el("text", {x:X(i), y:H-8, "text-anchor":"middle"}, svg).textContent = y; } lastYear = y; });
+  return Y;
+}
+function niceStep(range) { const raw = range / 5, p = Math.pow(10, Math.floor(Math.log10(raw))); return [1,2,2.5,5,10].map(m => m*p).find(s => s >= raw); }
+function tipAt(box, tip, e, html) {
+  tip.innerHTML = html; tip.style.opacity = 1;
+  const r = box.getBoundingClientRect(); let x = e.clientX - r.left + 14;
+  if (x + tip.offsetWidth > r.width) x = e.clientX - r.left - tip.offsetWidth - 14;
+  tip.style.left = x + "px"; tip.style.top = Math.max(0, e.clientY - r.top - 40) + "px";
+}
+
+"""
+
+
+# 资金曲线（多条，带十字线提示）：需要 D.dates、D.series[{name, equity}]、D.capital，以及 #eq / #eqLegend
+JS_EQUITY = """// ---- 资金曲线 ----
+(function () {
+  const box = document.getElementById("eq"), tip = box.querySelector(".tip");
+  const all = D.series.flatMap(s => s.equity);
+  let lo = Math.min(...all), hi = Math.max(...all); const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":"各策略资金曲线"}); box.prepend(svg);
+  const Y = axes(svg, lo, hi, niceStep(hi - lo), v => fmt(v));
+  el("line", {x1:M.l, x2:W-M.r, y1:Y(D.capital), y2:Y(D.capital), stroke:"var(--t3)", "stroke-dasharray":"3 3"}, svg);
+  const leg = document.getElementById("eqLegend");
+  D.series.forEach((s, k) => {
+    el("path", {d: s.equity.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join(""),
+      fill:"none", stroke:`var(--s${k+1})`, "stroke-width":2, "stroke-linejoin":"round"}, svg);
+    leg.insertAdjacentHTML("beforeend", `<span><i class="sw s${k+1}"></i>${s.name}</span>`);
+  });
+  leg.insertAdjacentHTML("beforeend", `<span class="muted">- - 初始本金</span>`);
+  const cross = el("line", {y1:M.t, y2:H-M.b, stroke:"var(--t3)", opacity:0}, svg);
+  const dots = D.series.map((s, k) => el("circle", {r:4, fill:`var(--s${k+1})`, stroke:"var(--surface)", "stroke-width":2, opacity:0}, svg));
+  const hit = el("rect", {x:M.l, y:M.t, width:W-M.l-M.r, height:H-M.t-M.b, fill:"transparent"}, svg);
+  hit.addEventListener("mousemove", e => {
+    const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * W;
+    const i = Math.max(0, Math.min(N - 1, Math.round((px - M.l) / (W - M.l - M.r) * (N - 1))));
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 1);
+    D.series.forEach((s, k) => { dots[k].setAttribute("cx", X(i)); dots[k].setAttribute("cy", Y(s.equity[i])); dots[k].setAttribute("opacity", 1); });
+    tipAt(box, tip, e, `<b>${D.dates[i]}</b><table>` + D.series.map((s, k) =>
+      `<tr><td><i class="sw s${k+1}"></i>${s.name}</td><td>${fmt(s.equity[i])}</td></tr>`).join("") + `</table>`);
+  });
+  hit.addEventListener("mouseleave", () => { tip.style.opacity = 0; cross.setAttribute("opacity", 0); dots.forEach(d => d.setAttribute("opacity", 0)); });
+})();
+
+"""
 
 TEMPLATE = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>纸黄金回测报告</title>
 <style>
-:root {{ --surface:#fcfcfb; --raised:#f4f3f0; --t1:#0b0b0b; --t2:#52514e; --t3:#7a7974; --grid:#e8e7e3; --border:#e0dfda;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --pos:#006300; --neg:#b42318; }}
-@media (prefers-color-scheme: dark) {{ :root:not([data-theme="light"]) {{ --surface:#1a1a19; --raised:#232322; --t1:#f0efec; --t2:#c3c2b7;
-  --t3:#8f8e86; --grid:#2c2c2a; --border:#383835; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --pos:#4cc06a; --neg:#ff7a6e; }} }}
-:root[data-theme="dark"] {{ --surface:#1a1a19; --raised:#232322; --t1:#f0efec; --t2:#c3c2b7; --t3:#8f8e86; --grid:#2c2c2a;
-  --border:#383835; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --pos:#4cc06a; --neg:#ff7a6e; }}
-* {{ box-sizing:border-box; }}
-body {{ margin:0; background:var(--surface); color:var(--t1); font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif; }}
-main {{ max-width:1080px; margin:0 auto; padding:28px 16px 48px; }}
-h1 {{ font-size:22px; margin:0 0 4px; }} h2 {{ font-size:17px; margin:32px 0 8px; }} h3 {{ font-size:15px; margin:0 0 4px; }}
-.muted {{ color:var(--t3); }} code {{ font-size:12px; color:var(--t2); word-break:break-all; }}
-.box {{ background:var(--raised); border-radius:10px; padding:12px 14px; color:var(--t2); }}
-.box li {{ margin:2px 0; }}
-.scroll {{ overflow-x:auto; }}
-table.data {{ border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; font-size:13px; }}
-table.data th, table.data td {{ border-bottom:1px solid var(--border); padding:6px 8px; text-align:right; white-space:nowrap; }}
-table.data th:first-child, table.data td:first-child {{ text-align:left; }}
-table.data thead th {{ color:var(--t2); font-weight:600; }}
-tr.ref {{ color:var(--t3); }}
-.pos {{ color:var(--pos); }} .neg {{ color:var(--neg); }}
-.sw {{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:baseline; }}
-.s1 {{ background:var(--s1); }} .s2 {{ background:var(--s2); }} .s3 {{ background:var(--s3); }}
-.chart {{ position:relative; }} svg {{ display:block; width:100%; height:auto; overflow:visible; }}
-svg text {{ font-size:11px; fill:var(--t3); }}
-.legend {{ display:flex; flex-wrap:wrap; gap:16px; color:var(--t2); font-size:13px; margin:4px 0 6px; }}
-.tip {{ position:absolute; pointer-events:none; background:var(--surface); border:1px solid var(--border); border-radius:8px;
-  padding:8px 10px; font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,.12); opacity:0; white-space:nowrap; z-index:2; }}
-.tip td {{ padding:0 8px 0 0; }} .tip td:last-child {{ text-align:right; font-variant-numeric:tabular-nums; }}
-.tabs {{ display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }}
-.tabs button {{ border:1px solid var(--border); background:var(--surface); color:var(--t2); border-radius:999px; padding:4px 12px; font:inherit; cursor:pointer; }}
-.tabs button[aria-pressed=true] {{ background:var(--t1); color:var(--surface); border-color:var(--t1); }}
-section.strat {{ border-top:1px solid var(--border); padding-top:16px; margin-top:20px; }}
-details {{ margin:8px 0; }} summary {{ cursor:pointer; color:var(--t2); }}
-</style></head>
+{css}</style></head>
 <body><main>
 <h1>纸黄金短线策略回测报告</h1>
 <p class="muted">{broker} · 数据 {start} ~ {end}（{n} 个交易日）· 生成于 {generated}</p>
@@ -205,63 +269,7 @@ details {{ margin:8px 0; }} summary {{ cursor:pointer; color:var(--t2); }}
 </main>
 <script>
 const D = {data};
-const NS = "http://www.w3.org/2000/svg";
-const el = (t, a, p) => {{ const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); p && p.appendChild(e); return e; }};
-const fmt = (v, d=0) => v.toLocaleString("zh-CN", {{minimumFractionDigits:d, maximumFractionDigits:d}});
-const W = 1040, H = 320, M = {{t:12, r:16, b:28, l:64}};
-const N = D.dates.length;
-const X = i => M.l + (W - M.l - M.r) * i / (N - 1);
-const idx = Object.fromEntries(D.dates.map((d, i) => [d, i]));
-
-function axes(svg, lo, hi, step, f) {{
-  const Y = v => M.t + (hi - v) / (hi - lo) * (H - M.t - M.b);
-  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {{
-    el("line", {{x1:M.l, x2:W-M.r, y1:Y(v), y2:Y(v), stroke:"var(--grid)"}}, svg);
-    el("text", {{x:M.l-8, y:Y(v)+4, "text-anchor":"end"}}, svg).textContent = f(v);
-  }}
-  let lastYear = "";
-  D.dates.forEach((d, i) => {{ const y = d.slice(0, 4);
-    if (y !== lastYear && i > 0) {{ el("text", {{x:X(i), y:H-8, "text-anchor":"middle"}}, svg).textContent = y; }} lastYear = y; }});
-  return Y;
-}}
-function niceStep(range) {{ const raw = range / 5, p = Math.pow(10, Math.floor(Math.log10(raw))); return [1,2,2.5,5,10].map(m => m*p).find(s => s >= raw); }}
-function tipAt(box, tip, e, html) {{
-  tip.innerHTML = html; tip.style.opacity = 1;
-  const r = box.getBoundingClientRect(); let x = e.clientX - r.left + 14;
-  if (x + tip.offsetWidth > r.width) x = e.clientX - r.left - tip.offsetWidth - 14;
-  tip.style.left = x + "px"; tip.style.top = Math.max(0, e.clientY - r.top - 40) + "px";
-}}
-
-// ---- 资金曲线 ----
-(function () {{
-  const box = document.getElementById("eq"), tip = box.querySelector(".tip");
-  const all = D.series.flatMap(s => s.equity);
-  let lo = Math.min(...all), hi = Math.max(...all); const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
-  const svg = el("svg", {{viewBox:`0 0 ${{W}} ${{H}}`, role:"img", "aria-label":"各策略资金曲线"}}); box.prepend(svg);
-  const Y = axes(svg, lo, hi, niceStep(hi - lo), v => fmt(v));
-  el("line", {{x1:M.l, x2:W-M.r, y1:Y(D.capital), y2:Y(D.capital), stroke:"var(--t3)", "stroke-dasharray":"3 3"}}, svg);
-  const leg = document.getElementById("eqLegend");
-  D.series.forEach((s, k) => {{
-    el("path", {{d: s.equity.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join(""),
-      fill:"none", stroke:`var(--s${{k+1}})`, "stroke-width":2, "stroke-linejoin":"round"}}, svg);
-    leg.insertAdjacentHTML("beforeend", `<span><i class="sw s${{k+1}}"></i>${{s.name}}</span>`);
-  }});
-  leg.insertAdjacentHTML("beforeend", `<span class="muted">- - 初始本金</span>`);
-  const cross = el("line", {{y1:M.t, y2:H-M.b, stroke:"var(--t3)", opacity:0}}, svg);
-  const dots = D.series.map((s, k) => el("circle", {{r:4, fill:`var(--s${{k+1}})`, stroke:"var(--surface)", "stroke-width":2, opacity:0}}, svg));
-  const hit = el("rect", {{x:M.l, y:M.t, width:W-M.l-M.r, height:H-M.t-M.b, fill:"transparent"}}, svg);
-  hit.addEventListener("mousemove", e => {{
-    const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * W;
-    const i = Math.max(0, Math.min(N - 1, Math.round((px - M.l) / (W - M.l - M.r) * (N - 1))));
-    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("opacity", 1);
-    D.series.forEach((s, k) => {{ dots[k].setAttribute("cx", X(i)); dots[k].setAttribute("cy", Y(s.equity[i])); dots[k].setAttribute("opacity", 1); }});
-    tipAt(box, tip, e, `<b>${{D.dates[i]}}</b><table>` + D.series.map((s, k) =>
-      `<tr><td><i class="sw s${{k+1}}"></i>${{s.name}}</td><td>${{fmt(s.equity[i])}}</td></tr>`).join("") + `</table>`);
-  }});
-  hit.addEventListener("mouseleave", () => {{ tip.style.opacity = 0; cross.setAttribute("opacity", 0); dots.forEach(d => d.setAttribute("opacity", 0)); }});
-}})();
-
-// ---- 价格与交易点 ----
+{js_helpers}{js_equity}// ---- 价格与交易点 ----
 (function () {{
   const box = document.getElementById("px"), tip = box.querySelector(".tip");
   let lo = Math.min(...D.close), hi = Math.max(...D.close); const pad = (hi - lo) * 0.05; lo -= pad; hi += pad;
